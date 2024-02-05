@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>上传图片并比较像素点</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            padding: 20px;
+            text-align: center;
+        }
+        #imageContainer {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+        }
+       .crosshair {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            cursor: crosshair;
+            display: none; /* 初始状态不显示，直到图片被加载 */
+        }
+
+        .crosshair::before,
+        .crosshair::after {
+            content: "";
+            position: absolute;
+            background-color: red;
+        }
+
+        .crosshair::before {
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 2px;
+        }
+
+        .crosshair::after {
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+        }
+        input[type="file"] {
+            margin-bottom: 20px;
+        }
+        #compareColors {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        @media (max-width: 768px) {
+            .crosshair {
+                width: 15px;
+                height: 15px;
+            }
+            #compareColors {
+                padding: 15px 30px;
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <form>
+        选择要上传的图片：<br>
+        <input type="file" id="fileToUpload"><br>
+        <div id="imageContainer">
+            <img id="uploadedImage" src="#" alt="Uploaded Image" style="max-width: 500px; max-height: 500px;">
+            <div id="crosshair1" class="crosshair">1</div>
+            <div id="crosshair2" class="crosshair">2</div>
+        </div>
+        <input type="button" id="compareColors" value="比较颜色" disabled>
+        <br>
+        <input type="radio" id="moveCrosshair1" name="crosshair" value="1" checked>
+        <label for="moveCrosshair1">移动准星 1</label>
+        <input type="radio" id="moveCrosshair2" name="crosshair" value="2">
+        <label for="moveCrosshair2">移动准星 2</label>
+    </form>
+
+    <div id="colorDifference"></div>
+    <div id="recentColorDifferences"></div>
+
+
+    <script>
+        var selectedPoints = [];
+        var activeCrosshair = 1; // 初始化 activeCrosshair 变量
+        var imageContainer = document.getElementById('imageContainer');
+        var crosshair1 = document.getElementById('crosshair1');
+        var crosshair2 = document.getElementById('crosshair2');
+        var uploadedImage = document.getElementById('uploadedImage');
+        var recentColorDifferences = [];
+
+        document.getElementById('fileToUpload').onchange = function(e) {
+            var file = e.target.files[0];
+            var image = document.getElementById('uploadedImage');
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                image.src = e.target.result;
+                image.onload = function() {
+                    var container = document.getElementById('imageContainer');
+                    var crosshairs = document.querySelectorAll('.crosshair');
+
+                    // 显示准星
+                    crosshairs.forEach(function(crosshair) {
+                        crosshair.style.display = 'block';
+                        crosshair.style.left = (container.offsetWidth / 2 - 10) + 'px';
+                        crosshair.style.top = (container.offsetHeight / 2 - 10) + 'px';
+                    });
+
+                    // 启用比较按钮
+                    document.getElementById('compareColors').disabled = false;
+                };
+            };
+            reader.readAsDataURL(file);
+        };
+
+        document.getElementById('moveCrosshair1').onchange = function() {
+            if (this.checked) {
+                activeCrosshair = 1;
+            }
+        };
+
+        document.getElementById('moveCrosshair2').onchange = function() {
+            if (this.checked) {
+                activeCrosshair = 2;
+            }
+        };
+
+        imageContainer.onclick = function(e) {
+            var rect = uploadedImage.getBoundingClientRect();
+            var scaleX = uploadedImage.naturalWidth / uploadedImage.width;
+            var scaleY = uploadedImage.naturalHeight / uploadedImage.height;
+            var x = (e.clientX - rect.left) * scaleX;
+            var y = (e.clientY - rect.top) * scaleY;
+
+            if (activeCrosshair === 1) {
+                selectedPoints[0] = { x: x, y: y };
+            } else if (activeCrosshair === 2) {
+                selectedPoints[1] = { x: x, y: y };
+            }
+
+            updateCrosshairs();
+        };
+
+        document.getElementById('compareColors').onclick = function() {
+            if (selectedPoints.length === 2) {
+                var difference = calculateColorDifference(selectedPoints[0], selectedPoints[1]);
+                document.getElementById('colorDifference').innerText = '两个像素点的颜色差异为：' + difference;
+
+                // 将最新的颜色差异值添加到数组中
+                recentColorDifferences.push(difference);
+
+                // 如果数组长度超过5条，移除最旧的一条
+                if (recentColorDifferences.length > 5) {
+                    recentColorDifferences.shift();
+                }
+
+                // 更新页面上显示的最近5条颜色差异值
+                var recentColorDifferenceElement = document.getElementById('recentColorDifferences');
+                recentColorDifferenceElement.innerHTML = '最近的5条颜色差异值：';
+                recentColorDifferences.forEach(function(difference) {
+                    recentColorDifferenceElement.innerHTML += '<br>' + difference;
+                });
+            }
+        };
+
+        // 更新准星位置
+        function updateCrosshairs() {
+            if (selectedPoints.length > 0) {
+                var point = selectedPoints[0];
+                crosshair1.style.display = 'block';
+                crosshair1.style.left = (point.x / uploadedImage.naturalWidth * uploadedImage.width) + 'px';
+                crosshair1.style.top = (point.y / uploadedImage.naturalHeight * uploadedImage.height) + 'px';
+            } else {
+                crosshair1.style.display = 'none';
+            }
+
+            if (selectedPoints.length > 1) {
+                var point = selectedPoints[1];
+                crosshair2.style.display = 'block';
+                crosshair2.style.left = (point.x / uploadedImage.naturalWidth * uploadedImage.width) + 'px';
+                crosshair2.style.top = (point.y / uploadedImage.naturalHeight * uploadedImage.height) + 'px';
+            } else {
+                crosshair2.style.display = 'none';
+            }
+        }
+
+        function calculateColorDifference(point1, point2) {
+            var canvas = document.createElement('canvas');
+            canvas.width = 1;
+            canvas.height = 1;
+            var context = canvas.getContext('2d');
+            var image = document.getElementById('uploadedImage');
+
+            // 获取第一个点的颜色
+            context.drawImage(image, point1.x, point1.y, 1, 1, 0, 0, 1, 1);
+            var color1 = context.getImageData(0, 0, 1, 1).data;
+
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 获取第二个点的颜色
+            context.drawImage(image, point2.x, point2.y, 1, 1, 0, 0, 1, 1);
+            var color2 = context.getImageData(0, 0, 1, 1).data;
+
+            // 计算颜色差异（欧几里得距离）
+            var difference = Math.sqrt(
+                Math.pow(color2[0] - color1[0], 2) +
+                Math.pow(color2[1] - color1[1], 2) +
+                Math.pow(color2[2] - color1[2], 2)
+            );
+
+            // 返回颜色差异值
+            return difference;
+        }
+    </script>
+</body>
+</html>
